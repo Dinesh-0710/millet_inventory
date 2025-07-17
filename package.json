@@ -12,6 +12,7 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
     "mysql": "^2.18.1",
-    "mysql2": "^3.14.2"
+    "mysql2": "^3.14.2",
+    "razorpay": "^2.9.6"
   }
 }
