@@ -4,7 +4,7 @@ const express  = require('express');
 const cors     = require('cors');
 const path     = require('path');
 const mysql    = require('mysql2/promise');
-const Razorpay = require('razorpay');
+//const Razorpay = require('razorpay');
 const crypto   = require('crypto');
 const bcrypt   = require('bcrypt');         // ✅ Required for password hashing
 const jwt      = require('jsonwebtoken');   // ✅ Required for JWT login
@@ -26,11 +26,11 @@ const pool = mysql.createPool({
 console.log('🟢 Connected to MySQL');
 
 /* ─── Razorpay ─── */
-const razor = new Razorpay({
+/*const razor = new Razorpay({
   key_id:     process.env.RAZOR_KEY_ID,
   key_secret: process.env.RAZOR_KEY_SECRET
 });
-
+*/
 /* ---------------- LOGIN (Admin) ---------------- */
 app.post('/login', async (req,res) => {
   try {
@@ -159,7 +159,7 @@ app.post('/api/order', async (req,res)=>{
 });
 
 /* --------------- Razorpay --------------- */
-app.post('/api/pay/init', async (req,res)=>{
+/*app.post('/api/pay/init', async (req,res)=>{
   const { orderId, amount } = req.body;
   try{
     const rpOrder = await razor.orders.create({
@@ -186,7 +186,7 @@ app.post('/webhook/razorpay', express.raw({type:'application/json'}), async (req
     }
   }
   res.sendStatus(200);
-});
+});*/
 
 /* --------------- ORDERS list & status ---- */
 app.get('/api/order/:username', async (req,res)=>{
