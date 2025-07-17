@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Distributor • Millet</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>   <!-- Razorpay -->
+<style>
+ body{background:#f5f7fa}
+ .card{border:0;border-radius:1rem;box-shadow:0 6px 18px rgba(0,0,0,.06)}
+ #toastBox{position:fixed;top:1rem;right:1rem;z-index:1055}
+</style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-success shadow-sm">
+  <div class="container-fluid"><span class="navbar-brand fw-semibold">Millet • Distributor</span></div>
+</nav>
+
+<div class="container py-4">
+
+  <!-- KPI row -->
+  <div class="row mb-4" id="kpiRow"></div>
+
+  <!-- Place order -->
+  <div class="card mb-4">
+    <div class="card-header bg-white fw-bold">🛒 Place Order</div>
+    <div class="card-body">
+      <form id="ordForm" class="row gy-2 gx-3 align-items-center">
+        <div class="col-md"><input id="user" class="form-control" placeholder="Your username" required></div>
+        <div class="col-md">
+          <select id="pid" class="form-select" required>
+            <option disabled selected>Select Product (SKU)</option>
+          </select>
+        </div>
+        <div class="col-md"><input id="qty" type="number" class="form-control" placeholder="Qty" required></div>
+        <div class="col-md">
+          <select id="payMode" class="form-select">
+            <option value="cod" selected>Cash on Delivery</option>
+            <option value="online">Online Payment</option>
+          </select>
+        </div>
+        <div class="col-auto"><button class="btn btn-dark px-4">Order</button></div>
+      </form>
+      <button id="payBtn" class="btn btn-success mt-3 d-none">Pay Online</button>
+    </div>
+  </div>
+
+  <!-- 📑 Order history -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center bg-white fw-bold">
+      📑 Your Orders
+      <select id="filter" class="form-select w-auto">
+        <option value="all">All</option>
+        <option value="pending">Pending</option>
+        <option value="shipped">Shipped</option>
+        <option value="delivered">Delivered</option>
+      </select>
+    </div>
+    <div class="card-body p-0 table-responsive">
+      <table class="table table-hover align-middle mb-0" id="orders">
+        <thead class="table-light">
+          <tr><th>#</th><th>SKU</th><th>Product</th><th>Qty</th><th>Status</th><th>Pay&nbsp;Mode</th><th>Pay&nbsp;Status</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 📝 Record Sale -->
+  <div class="card">
+    <div class="card-header bg-white fw-bold">📝 Record Sale</div>
+    <div class="card-body">
+      <form id="saleForm" class="row gy-2 gx-3 align-items-center">
+        <div class="col-md">
+          <select id="sPid" class="form-select" required>
+            <option disabled selected>Product (SKU)</option>
+          </select>
+        </div>
+        <div class="col-md"><input id="sQty"  type="number" class="form-control" placeholder="Qty" required></div>
+        <div class="col-md"><input id="sDisc" type="number" step="0.01" class="form-control" placeholder="Discount ₹"></div>
+        <div class="col-auto"><button class="btn btn-primary px-4">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<div id="toastBox"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const pidSel  = document.getElementById('pid');
+const sPidSel = document.getElementById('sPid');
+const ordersT = document.querySelector('#orders tbody');
+const filter  = document.getElementById('filter');
+const payBtn  = document.getElementById('payBtn');
+const kpiRow  = document.getElementById('kpiRow');
+
+let currentUser='', lastOrderId=0, payableAmt=0;
+
+/* toast */
+function toast(msg){
+  const id='t'+Date.now();
+  document.getElementById('toastBox').insertAdjacentHTML('beforeend',`
+    <div id="${id}" class="toast text-bg-success border-0 mb-2">
+      <div class="d-flex"><div class="toast-body">${msg}</div>
+        <button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div></div>`);
+  new bootstrap.Toast('#'+id,{delay:2000}).show();
+}
+
+/* KPI cards */
+async function loadKPI(u){
+  if(!u) return;
+  const k = await (await fetch('/api/stats/distributor/'+u)).json();
+  kpiRow.innerHTML = `
+    <div class="col-md-3"><div class="card text-center p-3">
+      <h6 class="text-muted small mb-0">Stock on Hand</h6>
+      <h2 class="mb-0">${k.stock}</h2>
+    </div></div>
+    <div class="col-md-3"><div class="card text-center p-3">
+      <h6 class="text-muted small mb-0">Sales ₹</h6>
+      <h2 class="mb-0">${k.revenue.toFixed(2)}</h2>
+    </div></div>
+    <div class="col-md-3"><div class="card text-center p-3">
+      <h6 class="text-muted small mb-0">Discount ₹</h6>
+      <h2 class="mb-0">${k.discount.toFixed(2)}</h2>
+    </div></div>
+    <div class="col-md-3"><div class="card text-center p-3">
+      <h6 class="text-muted small mb-0">Profit ₹</h6>
+      <h2 class="mb-0">${k.profit.toFixed(2)}</h2>
+    </div></div>`;
+}
+
+/* load product list */
+async function loadProducts(){
+  const list=await (await fetch('/api/products')).json();
+  pidSel.innerHTML='<option disabled selected>Select Product (SKU)</option>';
+  sPidSel.innerHTML='<option disabled selected>Product (SKU)</option>';
+  list.forEach(p=>{
+    const opt=`<option value="${p.id}">${p.sku} — ${p.name}</option>`;
+    pidSel.insertAdjacentHTML('beforeend',opt);
+    sPidSel .insertAdjacentHTML('beforeend',opt);
+  });
+}
+
+/* badge helper */
+function badge(st){const c={pending:'warning',shipped:'info',delivered:'success'};return `<span class="badge bg-${c[st]||'secondary'} text-capitalize">${st}</span>`}
+
+/* load orders */
+async function showOrders(u){
+  if(!u) return; currentUser=u;
+  const all=await (await fetch('/api/order/'+u)).json();
+  const rows=filter.value==='all'?all:all.filter(o=>o.status===filter.value);
+  ordersT.innerHTML='';
+  rows.forEach(o=>{
+    o.items.forEach(it=>{
+      ordersT.insertAdjacentHTML('beforeend',`
+        <tr>
+          <td>${o.id}</td><td>${it.sku}</td><td>${it.name}</td><td>${it.qty}</td>
+          <td>${badge(o.status)}</td>
+          <td>${o.payment_mode}</td>
+          <td>${o.payment_status}</td>
+        </tr>`);});
+  });
+}
+
+/* place order */
+document.getElementById('ordForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const qtyVal = Number(qty.value);
+  const body={
+    distributor : user.value.trim(),
+    payment_mode: payMode.value,
+    items:[{productId:Number(pid.value), qty: qtyVal}]
+  };
+  const res=await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const order=await res.json();
+  lastOrderId=order.id;
+  payableAmt = qtyVal * 100;                       // replace with real price if needed
+
+  toast('Order placed ✅');
+  showOrders(user.value.trim());
+  loadKPI(user.value.trim());
+
+  payBtn.classList.toggle('d-none', payMode.value!=='online');
+  e.target.reset();
+});
+
+/* pay online */
+payBtn.onclick = async ()=>{
+  if(!lastOrderId) return;
+  const r=await fetch('/api/pay/init',{method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({orderId:lastOrderId,amount:payableAmt})});
+  const { key,rpOrderId,amount } = await r.json();
+  const rzp=new Razorpay({
+    key, order_id:rpOrderId, amount:amount*100, currency:'INR',
+    name:'Millet Supply‑Chain', description:'Order #'+lastOrderId,
+    handler:()=>{ toast('Payment successful ✅'); payBtn.classList.add('d-none'); showOrders(currentUser); loadKPI(currentUser); }
+  });
+  rzp.open();
+};
+
+/* record sale */
+document.getElementById('saleForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const body={
+    distributor:user.value.trim(),
+    productId :Number(sPid.value),
+    qty       :Number(sQty.value),
+    discount  :Number(sDisc.value||0)
+  };
+  await fetch('/api/sales',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  toast('Sale recorded ✅');
+  loadKPI(user.value.trim());
+  e.target.reset();
+});
+
+/* listeners */
+filter.addEventListener('change',()=>showOrders(currentUser));
+document.getElementById('user').addEventListener('blur',e=>{
+  const u=e.target.value.trim();
+  showOrders(u);
+  loadKPI(u);
+});
+
+/* init */
+loadProducts();
+</script>
+</body>
+</html>

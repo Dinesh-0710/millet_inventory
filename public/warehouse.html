@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Warehouse • Millet</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+ body{background:#f5f7fa}
+ .card{border:0;border-radius:1rem;box-shadow:0 6px 18px rgba(0,0,0,.06)}
+ #toastBox{position:fixed;top:1rem;right:1rem;z-index:1055}
+</style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-warning shadow-sm">
+  <div class="container-fluid"><span class="navbar-brand fw-semibold">Millet • Warehouse</span></div>
+</nav>
+
+<div class="container py-4">
+
+  <!-- 🔄 Update stock -->
+  <div class="card mb-4">
+    <div class="card-header bg-white fw-bold">🔄 Update Stock</div>
+    <div class="card-body">
+      <form id="updForm" class="row gy-2 gx-3 align-items-center">
+        <div class="col-md">
+          <select id="pid" class="form-select" required>
+            <option disabled selected>Select SKU</option>
+          </select>
+        </div>
+        <div class="col-md">
+          <input id="delta" type="number" class="form-control" placeholder="+ / −" required>
+        </div>
+        <div class="col-auto">
+          <button class="btn btn-primary px-4">Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 📦 Inventory -->
+  <div class="card mb-4">
+    <div class="card-header bg-white fw-bold">📦 Inventory</div>
+    <div class="card-body p-0 table-responsive">
+      <table class="table table-hover align-middle mb-0" id="inv">
+        <thead class="table-light">
+          <tr><th>ID</th><th>SKU</th><th>Barcode</th><th>Name</th><th>Qty</th></tr>
+        </thead><tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 🗒️ Updates -->
+  <div class="card">
+    <div class="card-header bg-white fw-bold">
+      Updates
+      <ul class="nav nav-tabs card-header-tabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#stockTab">Stock</button></li>
+        <li class="nav-item"><button class="nav-link"         data-bs-toggle="tab" data-bs-target="#orderTab">Orders</button></li>
+      </ul>
+    </div>
+    <div class="tab-content">
+      <ul class="list-group list-group-flush tab-pane fade show active" id="stockTab"></ul>
+      <ul class="list-group list-group-flush tab-pane fade"           id="orderTab"></ul>
+    </div>
+  </div>
+</div>
+
+<div id="toastBox"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const pidSel   = document.getElementById('pid');
+const deltaInp = document.getElementById('delta');
+const invBody  = document.querySelector('#inv tbody');
+const stockLog = document.getElementById('stockTab');
+const orderLog = document.getElementById('orderTab');
+
+/* toast helper */
+function toast(msg){
+  const id='t'+Date.now();
+  document.getElementById('toastBox').insertAdjacentHTML('beforeend',`
+    <div id="${id}" class="toast text-bg-success border-0 mb-2">
+      <div class="d-flex"><div class="toast-body">${msg}</div>
+        <button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>`);
+  new bootstrap.Toast('#'+id,{delay:2000}).show();
+}
+
+/* load products into dropdown */
+async function loadProducts(){
+  const list = await (await fetch('/api/products')).json();
+  pidSel.innerHTML = '<option disabled selected>Select SKU</option>';
+  list.forEach(p=>{
+    pidSel.insertAdjacentHTML('beforeend',`
+      <option value="${p.id}">${p.sku} — ${p.name}</option>`);
+  });
+}
+
+/* load inventory table */
+async function loadInv(){
+  const data = await (await fetch('/api/inventory')).json();
+  invBody.innerHTML='';
+  data.forEach(r=>{
+    invBody.insertAdjacentHTML('beforeend',`
+      <tr><td>${r.id}</td><td>${r.sku}</td><td>${r.barcode||'-'}</td><td>${r.name}</td><td>${r.quantity}</td></tr>`);
+  });
+}
+
+/* load recent order‑status updates */
+async function loadOrderUpdates(){
+  const rows = await (await fetch('/api/orders/recent')).json();
+  orderLog.innerHTML='';
+  rows.forEach(o=>{
+    orderLog.insertAdjacentHTML('beforeend',`
+      <li class="list-group-item">
+        Order #${o.id} → <span class="text-capitalize">${o.status}</span>
+        <small class="text-muted">(${o.distributor})</small>
+      </li>`);
+  });
+}
+
+/* handle stock change */
+document.getElementById('updForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const body = { productId:Number(pidSel.value), delta:Number(deltaInp.value) };
+  await fetch('/api/inventory/update',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  toast('Stock updated ✅');
+  stockLog.insertAdjacentHTML('afterbegin',`
+    <li class="list-group-item">Δ ${body.delta} → product ${body.productId}</li>`);
+  e.target.reset();
+  loadInv();
+});
+
+/* init on page load */
+loadProducts();
+loadInv();
+loadOrderUpdates();
+setInterval(loadOrderUpdates, 20000);   // refresh every 20 s
+</script>
+</body>
+</html>
